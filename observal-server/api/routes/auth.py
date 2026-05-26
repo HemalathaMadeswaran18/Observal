@@ -269,11 +269,16 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
 
 
 @router.get("/oauth/login")
-async def oauth_login(request: Request):
+async def oauth_login(request: Request, next: str | None = None):
     """Initiates the OAuth SSO flow"""
-    optic.debug("oauth_login called")
+    optic.debug("oauth_login called, next={}", next)
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
+
+    # Preserve the `next` path through the OIDC redirect so the callback can
+    # redirect the user to the intended destination (e.g. /device?code=...).
+    if next and next.startswith("/") and not next.startswith("//"):
+        request.session["oauth_next"] = next
 
     # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
     # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
@@ -397,6 +402,14 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
     )
     frontend_redirect = f"{ds.get_sync('deployment.frontend_url', 'http://localhost:3000')}/login?code={code}"
+    # Restore the `next` path saved during oauth_login so the frontend can
+    # redirect the user to the intended page (e.g. /device?code=...) after
+    # exchanging the auth code.
+    oauth_next = request.session.pop("oauth_next", None)
+    if oauth_next and oauth_next.startswith("/") and not oauth_next.startswith("//"):
+        from urllib.parse import quote
+
+        frontend_redirect += f"&next={quote(oauth_next, safe='')}"
     return RedirectResponse(url=frontend_redirect)
 
 

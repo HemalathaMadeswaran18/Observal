@@ -159,7 +159,9 @@ function LoginContent() {
 
   function handleSsoLogin() {
     setSsoLoading(true);
-    window.location.href = "/api/v1/auth/oauth/login";
+    const nextPath = searchParams.get("next");
+    const ssoUrl = nextPath ? `/api/v1/auth/oauth/login?next=${encodeURIComponent(nextPath)}` : "/api/v1/auth/oauth/login";
+    window.location.href = ssoUrl;
   }
 
   if (mustChangePassword) {
